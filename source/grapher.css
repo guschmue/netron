@@ -37,6 +37,9 @@
 .node-item-type-data path { fill: rgb(85, 85, 85); }
 .node-item-type-quantization path { fill: rgb(80, 40, 0); }
 .node-item-type-custom path { fill: rgb(128, 128, 128); }
+.node-item-type-js path { fill: rgba(37, 165, 44, 0.7); }
+.node-item-type-cpu path { fill: rgba(165, 152, 37, 0.7); }
+.node-item-type-cpy path { fill: rgba(244, 23, 23, 0.7); }
 
 .node-item-input path { fill: #fff; }
 .node-item-input:hover { cursor: pointer; }
@@ -139,4 +142,7 @@
     .node-item-type-data path { fill: rgba(85, 85, 85, 0.7); }
     .node-item-type-quantization path { fill: rgb(80, 40, 0, 0.7); }
     .node-item-type-custom path { fill: rgb(64, 64, 64, 0.7); }
+    .node-item-type-js path { fill: rgba(37, 165, 44, 0.7); }
+    .node-item-type-cpu path { fill: rgba(165, 152, 37, 0.7); }
+    .node-item-type-cpy path { fill: rgba(244, 23, 23, 0.7); }
 }

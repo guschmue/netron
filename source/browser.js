@@ -92,24 +92,48 @@ host.BrowserHost = class {
                     const error = event instanceof ErrorEvent && event.error && event.error instanceof Error ? event.error : new Error(event && event.message ? event.message : JSON.stringify(event));
                     this.exception(error, true);
                 });
-                const measurement_id = '848W2NVWVH';
-                const user = this._getCookie('_ga').replace(/^(GA1\.\d\.)*/, '');
-                const session = this._getCookie('_ga' + measurement_id);
-                await this._telemetry.start('G-' + measurement_id, user, session);
-                this._telemetry.set('page_location', this._document.location && this._document.location.href ? this._document.location.href : null);
-                this._telemetry.set('page_title', this._document.title ? this._document.title : null);
-                this._telemetry.set('page_referrer', this._document.referrer ? this._document.referrer : null);
-                this._telemetry.send('page_view', {
-                    app_name: this.type,
-                    app_version: this.version,
-                });
-                this._telemetry.send('scroll', {
-                    percent_scrolled: 90,
-                    app_name: this.type,
-                    app_version: this.version
-                });
-                this._setCookie('_ga', 'GA1.2.' + this._telemetry.get('client_id'), 1200);
-                this._setCookie('_ga' + measurement_id, 'GS1.1.' + this._telemetry.session, 1200);
+                const ga4 = async () => {
+                    const measurement_id = '848W2NVWVH';
+                    const user = this._getCookie('_ga').replace(/^(GA1\.\d\.)*/, '');
+                    const session = this._getCookie('_ga' + measurement_id);
+                    await this._telemetry.start('G-' + measurement_id, user, session);
+                    this._telemetry.set('page_location', this._document.location && this._document.location.href ? this._document.location.href : null);
+                    this._telemetry.set('page_title', this._document.title ? this._document.title : null);
+                    this._telemetry.set('page_referrer', this._document.referrer ? this._document.referrer : null);
+                    this._telemetry.send('page_view', {
+                        app_name: this.type,
+                        app_version: this.version,
+                    });
+                    this._telemetry.send('scroll', {
+                        percent_scrolled: 90,
+                        app_name: this.type,
+                        app_version: this.version
+                    });
+                    this._setCookie('_ga', 'GA1.2.' + this._telemetry.get('client_id'), 1200);
+                    this._setCookie('_ga' + measurement_id, 'GS1.1.' + this._telemetry.session, 1200);
+                };
+                const ua = async () => {
+                    return new Promise((resolve) => {
+                        this._telemetry_ua = true;
+                        const script = this.document.createElement('script');
+                        script.setAttribute('type', 'text/javascript');
+                        script.setAttribute('src', 'https://www.google-analytics.com/analytics.js');
+                        script.onload = () => {
+                            if (this.window.ga) {
+                                this.window.ga.l = 1 * new Date();
+                                this.window.ga('create', 'UA-54146-13', 'auto');
+                                this.window.ga('set', 'anonymizeIp', true);
+                            }
+                            resolve();
+                        };
+                        script.onerror = () => {
+                            resolve();
+                        };
+                        this.document.body.appendChild(script);
+                    });
+                };
+                await ga4();
+                await ua();
             }
         };
         const capabilities = async () => {
@@ -151,6 +175,10 @@ host.BrowserHost = class {
         await capabilities();
     }
 
+    is_onnx(file) {
+        return (file.endsWith(".ort") || file.endsWith(".onnx")) 
+
+    }
     async start() {
         const hash = this.window.location.hash ? this.window.location.hash.replace(/^#/, '') : '';
         const search = this.window.location.search;
@@ -198,6 +226,21 @@ host.BrowserHost = class {
             openFileDialog.addEventListener('change', (e) => {
                 if (e.target && e.target.files && e.target.files.length > 0) {
                     const files = Array.from(e.target.files);
+                    if (files.length == 2) {
+                        let anno;
+                        let annofiles = Array.from(e.target.files);
+                        if (is_onnx(files[0].name)) {
+                            anno = files[1];
+                            files.pop();
+
+                        } else if (is_onnx(files[1].name)) {
+                            anno = files[0];
+                            files.shift();
+                        }
+                        if (anno !== undefined) {
+                            this._annotations(anno, annofiles);
+                        }
+                    }
                     const file = files.find((file) => this._view.accept(file.name, file.size));
                     if (file) {
                         this._open(file, files);
@@ -290,9 +333,10 @@ host.BrowserHost = class {
     }
 
     exception(error, fatal) {
-        if (this._telemetry && error) {
+        if ((this._telemetry_ua || this._telemetry) && error) {
             const name = error.name ? error.name + ': ' : '';
             const message = error.message ? error.message : JSON.stringify(error);
+            const description = name + message;
             let context = '';
             let stack = '';
             if (error.stack) {
@@ -327,6 +371,14 @@ host.BrowserHost = class {
             if (error.context) {
                 context = typeof error.context === 'string' ? error.context : JSON.stringify(error.context);
             }
+            if (this._telemetry_ua && this.window.ga) {
+                this.window.ga('send', 'exception', {
+                    exDescription: stack ? description + ' @ ' + stack : description,
+                    exFatal: fatal,
+                    appName: this.type,
+                    appVersion: this.version
+                });
+            }
             this._telemetry.send('exception', {
                 app_name: this.type,
                 app_version: this.version,
@@ -335,6 +387,19 @@ host.BrowserHost = class {
                 error_context: context,
                 error_stack: stack,
                 error_fatal: fatal ? true : false
+            });
+        }
+    }
+
+    event_ua(category, action, label, value) {
+        if (this._telemetry_ua && this.window.ga && category && action && label) {
+            this.window.ga('send', 'event', {
+                eventCategory: category,
+                eventAction: action,
+                eventLabel: label,
+                eventValue: value,
+                appName: this.type,
+                appVersion: this.version
             });
         }
     }
@@ -464,6 +529,17 @@ host.BrowserHost = class {
             await this._view.open(context);
             this._view.show(null);
             this.document.title = files[0].name;
+        } catch (error) {
+            this._view.error(error, null, null);
+        }
+    }
+
+    async _annotations(file, files) {
+        const context = new host.BrowserHost.BrowserFileContext(this, file, files);
+        try {
+            await context.open();
+            this._telemetry.set('session_engaged', 1);
+            await this._view.load_annotations(context, file.name);
         } catch (error) {
             this._view.error(error, null, null);
         }

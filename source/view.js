@@ -79,6 +79,12 @@ view.View = class {
                     accelerator: 'CmdOrCtrl+O',
                     execute: () => this._host.execute('open')
                 });
+                file.add({
+                    label: '&Load Annotations...',
+                    execute: () => this._host.execute('load_annotations')
+                });
+
+
                 if (this._host.type === 'Electron') {
                     this._recents = file.group('Open &Recent');
                     file.add({
@@ -614,6 +620,16 @@ view.View = class {
         return this._modelFactoryService.accept(file, size);
     }
 
+    async load_annotations(context, file) {
+        try {
+            const stream = await context.request(file, 'utf-8')
+            this._annotations = JSON.parse(stream);
+            console.log(`loaded annotations from ${file}`);
+        } catch (e) {
+            this._annotations = {};
+        }
+    }
+
     async open(context) {
         this._sidebar.close();
         await this._timeout(2);
@@ -627,6 +643,7 @@ view.View = class {
                 format.push('(' + model.producer + ')');
             }
             if (format.length > 0) {
+                this._host.event_ua('Model', 'Format', format.join(' '));
                 this._host.event('model_open', {
                     model_format: model.format || '',
                     model_producer: model.producer || ''
@@ -1808,7 +1825,7 @@ view.Node = class extends grapher.Node {
     _add(node) {
         const options = this.context.view.options;
         const header =  this.header();
-        const styles = [ 'node-item-type' ];
+        var styles = [ 'node-item-type' ];
         const type = node.type;
         const category = type && type.category ? type.category : '';
         if (category) {
@@ -1821,7 +1838,20 @@ view.Node = class extends grapher.Node {
             }
             throw error;
         }
-        const content = options.names && (node.name || node.location) ? (node.name || node.location) : type.name.split('.').pop();
+        var content = options.names && (node.name || node.location) ? (node.name || node.location) : type.name.split('.').pop();
+        const anno = this.context.view._annotations;
+        if (anno !== undefined) {
+            try {
+                const mst = anno[node.name];
+                if (mst !== undefined) {
+                    const p = mst.provider.toLowerCase();
+                    styles.push("node-item-type-" + p);
+                    content = content + ' (' + mst.dtype + " " + mst.dur.toFixed(1) + ')';
+                }
+            } catch {
+            }
+        }
+
         const tooltip = options.names && (node.name || node.location) ? type.name : (node.name || node.location);
         const title = header.add(null, styles, content, tooltip);
         title.on('click', () => this.context.activate(node));
